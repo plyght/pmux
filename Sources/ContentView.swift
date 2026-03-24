@@ -121,8 +121,6 @@ func sidebarSelectedWorkspaceForegroundNSColor(opacity: CGFloat) -> NSColor {
     return NSColor.white.withAlphaComponent(clampedOpacity)
 }
 
-#if compiler(>=6.2)
-@available(macOS 26.0, *)
 enum InternalTabDragConfigurationProvider {
     // These drags only make sense inside cmux. Outside the app, Finder should
     // reject them instead of materializing placeholder files from the payload.
@@ -131,20 +129,10 @@ enum InternalTabDragConfigurationProvider {
         operationsOutsideApp: .init(allowCopy: false, allowMove: false, allowDelete: false)
     )
 }
-#endif
 
 private struct InternalTabDragConfigurationModifier: ViewModifier {
-    @ViewBuilder
     func body(content: Content) -> some View {
-        #if compiler(>=6.2)
-        if #available(macOS 26.0, *) {
-            content.dragConfiguration(InternalTabDragConfigurationProvider.value)
-        } else {
-            content
-        }
-        #else
-        content
-        #endif
+        content.dragConfiguration(InternalTabDragConfigurationProvider.value)
     }
 }
 
@@ -159,23 +147,17 @@ struct ShortcutHintPillBackground: View {
 
     var body: some View {
         Capsule(style: .continuous)
-            .fill(.regularMaterial)
-            .overlay(
-                Capsule(style: .continuous)
-                    .stroke(Color.white.opacity(0.30 * emphasis), lineWidth: 0.8)
-            )
-            .shadow(color: Color.black.opacity(0.22 * emphasis), radius: 2, x: 0, y: 1)
+            .fill(.clear)
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .shadow(color: Color.black.opacity(0.12 * emphasis), radius: 2, x: 0, y: 1)
     }
 }
 
-/// Applies NSGlassEffectView (macOS 26+) to a window, falling back to NSVisualEffectView
+/// Applies NSGlassEffectView to a window for Liquid Glass material
 enum WindowGlassEffect {
     private static var glassViewKey: UInt8 = 0
-    private static var tintOverlayKey: UInt8 = 0
 
-    static var isAvailable: Bool {
-        NSClassFromString("NSGlassEffectView") != nil
-    }
+    static var isAvailable: Bool { true }
 
     static func apply(to window: NSWindow, tintColor: NSColor? = nil) {
         guard let originalContentView = window.contentView else { return }
@@ -183,120 +165,59 @@ enum WindowGlassEffect {
         // Check if we already applied glass (avoid re-wrapping)
         if let existingGlass = objc_getAssociatedObject(window, &glassViewKey) as? NSView {
             // Already applied, just update the tint
-            updateTint(on: existingGlass, color: tintColor, window: window)
+            updateTint(on: existingGlass, color: tintColor)
             return
         }
 
         let bounds = originalContentView.bounds
 
-        // Create the glass/blur view
-        let glassView: NSVisualEffectView
-        let usingGlassEffectView: Bool
-
-        // Try NSGlassEffectView first (macOS 26 Tahoe+)
-        if let glassClass = NSClassFromString("NSGlassEffectView") as? NSVisualEffectView.Type {
-            usingGlassEffectView = true
-            glassView = glassClass.init(frame: bounds)
-            glassView.wantsLayer = true
-            glassView.layer?.cornerRadius = 0
-
-            // Apply tint color via private API
-            if let color = tintColor {
-                let selector = NSSelectorFromString("setTintColor:")
-                if glassView.responds(to: selector) {
-                    glassView.perform(selector, with: color)
-                }
-            }
-        } else {
-            usingGlassEffectView = false
-            // Fallback to NSVisualEffectView
-            glassView = NSVisualEffectView(frame: bounds)
-            glassView.blendingMode = .behindWindow
-            // Favor a lighter fallback so behind-window glass reads more transparent.
-            glassView.material = .underWindowBackground
-            glassView.state = .active
-            glassView.wantsLayer = true
-        }
-
+        guard let glassClass = NSClassFromString("NSGlassEffectView") as? NSVisualEffectView.Type else { return }
+        let glassView = glassClass.init(frame: bounds)
+        glassView.wantsLayer = true
+        glassView.layer?.cornerRadius = 0
         glassView.autoresizingMask = [.width, .height]
 
-        if usingGlassEffectView {
-            // NSGlassEffectView is a full replacement for the contentView.
-            window.contentView = glassView
-
-            // Re-add the original SwiftUI hosting view on top of the glass, filling entire area.
-            originalContentView.translatesAutoresizingMaskIntoConstraints = false
-            originalContentView.wantsLayer = true
-            originalContentView.layer?.backgroundColor = NSColor.clear.cgColor
-            glassView.addSubview(originalContentView)
-
-            NSLayoutConstraint.activate([
-                originalContentView.topAnchor.constraint(equalTo: glassView.topAnchor),
-                originalContentView.bottomAnchor.constraint(equalTo: glassView.bottomAnchor),
-                originalContentView.leadingAnchor.constraint(equalTo: glassView.leadingAnchor),
-                originalContentView.trailingAnchor.constraint(equalTo: glassView.trailingAnchor)
-            ])
-        } else {
-            // For NSVisualEffectView fallback (macOS 13-15), do NOT replace window.contentView.
-            // Replacing contentView can break traffic light rendering with
-            // `.fullSizeContentView` + `titlebarAppearsTransparent`.
-            glassView.translatesAutoresizingMaskIntoConstraints = false
-            originalContentView.addSubview(glassView, positioned: .below, relativeTo: nil)
-
-            NSLayoutConstraint.activate([
-                glassView.topAnchor.constraint(equalTo: originalContentView.topAnchor),
-                glassView.bottomAnchor.constraint(equalTo: originalContentView.bottomAnchor),
-                glassView.leadingAnchor.constraint(equalTo: originalContentView.leadingAnchor),
-                glassView.trailingAnchor.constraint(equalTo: originalContentView.trailingAnchor)
-            ])
+        if let color = tintColor {
+            let selector = NSSelectorFromString("setTintColor:")
+            if glassView.responds(to: selector) {
+                glassView.perform(selector, with: color)
+            }
         }
 
-        // Add tint overlay between glass and content (for fallback)
-        if let tintColor, !usingGlassEffectView {
-            let tintOverlay = NSView(frame: bounds)
-            tintOverlay.translatesAutoresizingMaskIntoConstraints = false
-            tintOverlay.wantsLayer = true
-            tintOverlay.layer?.backgroundColor = tintColor.cgColor
-            glassView.addSubview(tintOverlay)
-            NSLayoutConstraint.activate([
-                tintOverlay.topAnchor.constraint(equalTo: glassView.topAnchor),
-                tintOverlay.bottomAnchor.constraint(equalTo: glassView.bottomAnchor),
-                tintOverlay.leadingAnchor.constraint(equalTo: glassView.leadingAnchor),
-                tintOverlay.trailingAnchor.constraint(equalTo: glassView.trailingAnchor)
-            ])
-            objc_setAssociatedObject(window, &tintOverlayKey, tintOverlay, .OBJC_ASSOCIATION_RETAIN)
-        }
+        // NSGlassEffectView is a full replacement for the contentView.
+        window.contentView = glassView
 
-        // Store reference
+        // Re-add the original SwiftUI hosting view on top of the glass, filling entire area.
+        originalContentView.translatesAutoresizingMaskIntoConstraints = false
+        originalContentView.wantsLayer = true
+        originalContentView.layer?.backgroundColor = NSColor.clear.cgColor
+        glassView.addSubview(originalContentView)
+
+        NSLayoutConstraint.activate([
+            originalContentView.topAnchor.constraint(equalTo: glassView.topAnchor),
+            originalContentView.bottomAnchor.constraint(equalTo: glassView.bottomAnchor),
+            originalContentView.leadingAnchor.constraint(equalTo: glassView.leadingAnchor),
+            originalContentView.trailingAnchor.constraint(equalTo: glassView.trailingAnchor)
+        ])
+
         objc_setAssociatedObject(window, &glassViewKey, glassView, .OBJC_ASSOCIATION_RETAIN)
     }
 
     /// Update the tint color on an existing glass effect
     static func updateTint(to window: NSWindow, color: NSColor?) {
         guard let glassView = objc_getAssociatedObject(window, &glassViewKey) as? NSView else { return }
-        updateTint(on: glassView, color: color, window: window)
+        updateTint(on: glassView, color: color)
     }
 
-    private static func updateTint(on glassView: NSView, color: NSColor?, window: NSWindow) {
-        // For NSGlassEffectView, use setTintColor:
-        if glassView.className == "NSGlassEffectView" {
-            let selector = NSSelectorFromString("setTintColor:")
-            if glassView.responds(to: selector) {
-                glassView.perform(selector, with: color)
-            }
-        } else {
-            // For NSVisualEffectView fallback, update the tint overlay
-            if let tintOverlay = objc_getAssociatedObject(window, &tintOverlayKey) as? NSView {
-                tintOverlay.layer?.backgroundColor = color?.cgColor
-            }
+    private static func updateTint(on glassView: NSView, color: NSColor?) {
+        let selector = NSSelectorFromString("setTintColor:")
+        if glassView.responds(to: selector) {
+            glassView.perform(selector, with: color)
         }
     }
 
     static func remove(from window: NSWindow) {
-        // Note: Removing would require restoring original contentView structure
-        // For now, just clear the reference
         objc_setAssociatedObject(window, &glassViewKey, nil, .OBJC_ASSOCIATION_RETAIN)
-        objc_setAssociatedObject(window, &tintOverlayKey, nil, .OBJC_ASSOCIATION_RETAIN)
     }
 }
 
@@ -3565,15 +3486,9 @@ struct ContentView: View {
                     }
                 }
                 .frame(width: targetWidth)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color(nsColor: .windowBackgroundColor).opacity(0.98))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(Color(nsColor: .separatorColor).opacity(0.7), lineWidth: 1)
-                )
-                .shadow(color: Color.black.opacity(0.24), radius: 10, x: 0, y: 5)
+                .background(.clear)
+                .glassEffect(.regular, in: .rect(cornerRadius: 12, style: .continuous))
+                .shadow(color: Color.black.opacity(0.18), radius: 12, x: 0, y: 6)
                 .padding(.top, 40)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -10696,7 +10611,12 @@ private struct SidebarTopScrim: View {
 }
 
 private struct SidebarTopBlurEffect: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
+    func makeNSView(context: Context) -> NSView {
+        if let glassClass = NSClassFromString("NSGlassEffectView") as? NSView.Type {
+            let glass = glassClass.init(frame: .zero)
+            glass.wantsLayer = true
+            return glass
+        }
         let view = NSVisualEffectView()
         view.blendingMode = .withinWindow
         view.material = .underWindowBackground
@@ -10705,7 +10625,7 @@ private struct SidebarTopBlurEffect: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 private struct SidebarScrollViewResolver: NSViewRepresentable {
@@ -13202,14 +13122,9 @@ enum SidebarSelection {
 
 private struct ClearScrollBackground: ViewModifier {
     func body(content: Content) -> some View {
-        if #available(macOS 13.0, *) {
-            content
-                .scrollContentBackground(.hidden)
-                .background(ScrollBackgroundClearer())
-        } else {
-            content
-                .background(ScrollBackgroundClearer())
-        }
+        content
+            .scrollContentBackground(.hidden)
+            .background(ScrollBackgroundClearer())
     }
 }
 
@@ -13515,7 +13430,7 @@ func restoreWindowDragging(window: NSWindow?, previousMovableState: Bool?) {
     window.isMovable = previousMovableState
 }
 
-/// Wrapper view that tries NSGlassEffectView (macOS 26+) when available or requested
+/// Wrapper view that uses NSGlassEffectView for Liquid Glass or NSVisualEffectView for classic materials
 private struct SidebarVisualEffectBackground: NSViewRepresentable {
     let material: NSVisualEffectView.Material
     let blendingMode: NSVisualEffectView.BlendingMode
@@ -13543,12 +13458,9 @@ private struct SidebarVisualEffectBackground: NSViewRepresentable {
         self.preferLiquidGlass = preferLiquidGlass
     }
 
-    static var liquidGlassAvailable: Bool {
-        NSClassFromString("NSGlassEffectView") != nil
-    }
+    static var liquidGlassAvailable: Bool { true }
 
     func makeNSView(context: Context) -> NSView {
-        // Try NSGlassEffectView if preferred or if we want to test availability
         if preferLiquidGlass, let glassClass = NSClassFromString("NSGlassEffectView") as? NSView.Type {
             let glass = glassClass.init(frame: .zero)
             glass.autoresizingMask = [.width, .height]
@@ -13556,7 +13468,6 @@ private struct SidebarVisualEffectBackground: NSViewRepresentable {
             return glass
         }
 
-        // Use NSVisualEffectView
         let view = NSVisualEffectView()
         view.autoresizingMask = [.width, .height]
         view.wantsLayer = true
@@ -13565,14 +13476,11 @@ private struct SidebarVisualEffectBackground: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        // Configure based on view type
         if nsView.className == "NSGlassEffectView" {
-            // NSGlassEffectView configuration via private API
             nsView.alphaValue = max(0.0, min(1.0, opacity))
             nsView.layer?.cornerRadius = cornerRadius
             nsView.layer?.masksToBounds = cornerRadius > 0
 
-            // Try to set tint color via private selector
             if let color = tintColor {
                 let selector = NSSelectorFromString("setTintColor:")
                 if nsView.responds(to: selector) {
@@ -13580,7 +13488,6 @@ private struct SidebarVisualEffectBackground: NSViewRepresentable {
                 }
             }
         } else if let visualEffect = nsView as? NSVisualEffectView {
-            // NSVisualEffectView configuration
             visualEffect.material = material
             visualEffect.blendingMode = blendingMode
             visualEffect.state = state
@@ -13631,9 +13538,9 @@ private struct SidebarBackdrop: View {
     @AppStorage("sidebarTintHex") private var sidebarTintHex = SidebarTintDefaults.hex
     @AppStorage("sidebarTintHexLight") private var sidebarTintHexLight: String?
     @AppStorage("sidebarTintHexDark") private var sidebarTintHexDark: String?
-    @AppStorage("sidebarMaterial") private var sidebarMaterial = SidebarMaterialOption.sidebar.rawValue
-    @AppStorage("sidebarBlendMode") private var sidebarBlendMode = SidebarBlendModeOption.withinWindow.rawValue
-    @AppStorage("sidebarState") private var sidebarState = SidebarStateOption.followWindow.rawValue
+    @AppStorage("sidebarMaterial") private var sidebarMaterial = SidebarMaterialOption.liquidGlass.rawValue
+    @AppStorage("sidebarBlendMode") private var sidebarBlendMode = SidebarBlendModeOption.behindWindow.rawValue
+    @AppStorage("sidebarState") private var sidebarState = SidebarStateOption.active.rawValue
     @AppStorage("sidebarCornerRadius") private var sidebarCornerRadius = 0.0
     @AppStorage("sidebarBlurOpacity") private var sidebarBlurOpacity = 1.0
     @Environment(\.colorScheme) private var colorScheme
@@ -13791,6 +13698,7 @@ enum SidebarTintDefaults {
 }
 
 enum SidebarPresetOption: String, CaseIterable, Identifiable {
+    case liquidGlass
     case nativeSidebar
     case glassBehind
     case softBlur
@@ -13802,6 +13710,7 @@ enum SidebarPresetOption: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .liquidGlass: return String(localized: "settings.preset.liquidGlass", defaultValue: "Liquid Glass")
         case .nativeSidebar: return String(localized: "settings.preset.nativeSidebar", defaultValue: "Native Sidebar")
         case .glassBehind: return String(localized: "settings.preset.raycastGray", defaultValue: "Raycast Gray")
         case .softBlur: return String(localized: "settings.preset.softBlur", defaultValue: "Soft Blur")
@@ -13813,6 +13722,7 @@ enum SidebarPresetOption: String, CaseIterable, Identifiable {
 
     var material: SidebarMaterialOption {
         switch self {
+        case .liquidGlass: return .liquidGlass
         case .nativeSidebar: return .sidebar
         case .glassBehind: return .sidebar
         case .softBlur: return .sidebar
@@ -13824,6 +13734,7 @@ enum SidebarPresetOption: String, CaseIterable, Identifiable {
 
     var blendMode: SidebarBlendModeOption {
         switch self {
+        case .liquidGlass: return .behindWindow
         case .nativeSidebar: return .withinWindow
         case .glassBehind: return .behindWindow
         case .softBlur: return .behindWindow
@@ -13835,6 +13746,7 @@ enum SidebarPresetOption: String, CaseIterable, Identifiable {
 
     var state: SidebarStateOption {
         switch self {
+        case .liquidGlass: return .active
         case .nativeSidebar: return .followWindow
         case .glassBehind: return .active
         case .softBlur: return .active
@@ -13846,6 +13758,7 @@ enum SidebarPresetOption: String, CaseIterable, Identifiable {
 
     var tintHex: String {
         switch self {
+        case .liquidGlass: return "#000000"
         case .nativeSidebar: return "#000000"
         case .glassBehind: return "#000000"
         case .softBlur: return "#000000"
@@ -13857,6 +13770,7 @@ enum SidebarPresetOption: String, CaseIterable, Identifiable {
 
     var tintOpacity: Double {
         switch self {
+        case .liquidGlass: return 0.06
         case .nativeSidebar: return 0.18
         case .glassBehind: return 0.36
         case .softBlur: return 0.28
@@ -13868,6 +13782,7 @@ enum SidebarPresetOption: String, CaseIterable, Identifiable {
 
     var cornerRadius: Double {
         switch self {
+        case .liquidGlass: return 0.0
         case .nativeSidebar: return 0.0
         case .glassBehind: return 0.0
         case .softBlur: return 0.0
@@ -13879,6 +13794,7 @@ enum SidebarPresetOption: String, CaseIterable, Identifiable {
 
     var blurOpacity: Double {
         switch self {
+        case .liquidGlass: return 1.0
         case .nativeSidebar: return 1.0
         case .glassBehind: return 0.6
         case .softBlur: return 0.45

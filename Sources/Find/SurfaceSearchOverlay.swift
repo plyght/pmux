@@ -113,8 +113,8 @@ struct SurfaceSearchOverlay: View {
                 .safeHelp(String(localized: "search.close.help", defaultValue: "Close (Esc)"))
             }
             .padding(8)
-            .background(.background)
-            .clipShape(clipShape)
+            .background(.clear)
+            .glassEffect(.regular, in: .rect(cornerRadius: 10, style: .continuous))
             .shadow(radius: 4)
             .onAppear {
                 #if DEBUG

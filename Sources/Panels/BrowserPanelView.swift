@@ -4231,31 +4231,11 @@ private struct OmnibarSuggestionsView: View {
         }
         .background(
             RoundedRectangle(cornerRadius: popupCornerRadius, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: popupCornerRadius, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: popupOverlayGradientColors,
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                )
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: popupCornerRadius, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: popupBorderGradientColors,
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ),
-                    lineWidth: 1
-                )
+                .fill(.clear)
+                .glassEffect(.regular, in: .rect(cornerRadius: popupCornerRadius, style: .continuous))
         )
         .clipShape(RoundedRectangle(cornerRadius: popupCornerRadius, style: .continuous))
-        .shadow(color: popupShadowColor, radius: 20, y: 10)
+        .shadow(color: popupShadowColor, radius: 12, y: 6)
         .contentShape(RoundedRectangle(cornerRadius: popupCornerRadius, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityRespondsToUserInteraction(true)

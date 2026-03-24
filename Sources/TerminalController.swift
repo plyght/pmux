@@ -2,6 +2,7 @@ import AppKit
 import Carbon.HIToolbox
 import Foundation
 import Bonsplit
+import ScreenCaptureKit
 import WebKit
 
 extension Notification.Name {
@@ -6688,7 +6689,7 @@ class TerminalController {
     ) -> V2JavaScriptResult {
         let timeoutSeconds = max(0.01, timeout)
         let evaluator: (@escaping (Any?, String?) -> Void) -> Void = { finish in
-            if preferAsync, #available(macOS 11.0, *) {
+            if preferAsync {
                 webView.callAsyncJavaScript(script, arguments: [:], in: nil, in: contentWorld) { result in
                     switch result {
                     case .success(let value):
@@ -6961,24 +6962,15 @@ class TerminalController {
         """
 
         var rawResult: V2JavaScriptResult
-        if #available(macOS 11.0, *) {
-            rawResult = v2RunJavaScript(
-                webView,
-                script: asyncFunctionBody,
-                timeout: timeout,
-                preferAsync: true,
-                contentWorld: .page
-            )
-        } else {
-            let evaluateFallback = """
-            (async () => {
-              \(asyncFunctionBody)
-            })()
-            """
-            rawResult = v2RunJavaScript(webView, script: evaluateFallback, timeout: timeout, contentWorld: .page)
-        }
+        rawResult = v2RunJavaScript(
+            webView,
+            script: asyncFunctionBody,
+            timeout: timeout,
+            preferAsync: true,
+            contentWorld: .page
+        )
 
-        if !useEval, case .failure(let pageMessage) = rawResult, #available(macOS 11.0, *) {
+        if !useEval, case .failure(let pageMessage) = rawResult {
             let isolatedResult = v2RunJavaScript(
                 webView,
                 script: asyncFunctionBody,
@@ -12781,41 +12773,49 @@ class TerminalController {
         let filename = label.isEmpty ? "\(screenshotId).png" : "\(label)_\(screenshotId).png"
         let outputPath = outputDir.appendingPathComponent(filename)
 
-        // Capture the main window on main thread
+        let semaphore = DispatchSemaphore(value: 0)
         var captureError: String?
+
+        var targetWindow: NSWindow?
         DispatchQueue.main.sync {
-            guard let window = NSApp.mainWindow ?? NSApp.windows.first else {
-                captureError = "No window available"
-                return
-            }
+            targetWindow = NSApp.mainWindow ?? NSApp.windows.first
+        }
 
-            // Get window's CGWindowID
-            let windowNumber = CGWindowID(window.windowNumber)
+        guard let window = targetWindow else {
+            return "ERROR: No window available"
+        }
 
-            // Capture the window using CGWindowListCreateImage
-            guard let cgImage = CGWindowListCreateImage(
-                .null,  // Capture just the window bounds
-                .optionIncludingWindow,
-                windowNumber,
-                [.boundsIgnoreFraming, .nominalResolution]
-            ) else {
-                captureError = "Failed to capture window image"
-                return
-            }
+        let windowNumber = CGWindowID(window.windowNumber)
 
-            // Convert to NSBitmapImageRep and save as PNG
-            let bitmap = NSBitmapImageRep(cgImage: cgImage)
-            guard let pngData = bitmap.representation(using: .png, properties: [:]) else {
-                captureError = "Failed to create PNG data"
-                return
-            }
-
+        Task {
             do {
+                let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+                guard let scWindow = content.windows.first(where: { $0.windowID == windowNumber }) else {
+                    captureError = "Failed to find window in ScreenCaptureKit"
+                    semaphore.signal()
+                    return
+                }
+
+                let filter = SCContentFilter(desktopIndependentWindow: scWindow)
+                let config = SCStreamConfiguration()
+                config.width = Int(window.frame.width) * Int(window.backingScaleFactor)
+                config.height = Int(window.frame.height) * Int(window.backingScaleFactor)
+
+                let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+                let bitmap = NSBitmapImageRep(cgImage: image)
+                guard let pngData = bitmap.representation(using: .png, properties: [:]) else {
+                    captureError = "Failed to create PNG data"
+                    semaphore.signal()
+                    return
+                }
                 try pngData.write(to: outputPath)
             } catch {
-                captureError = "Failed to write file: \(error.localizedDescription)"
+                captureError = "Failed to capture: \(error.localizedDescription)"
             }
+            semaphore.signal()
         }
+
+        semaphore.wait()
 
         if let error = captureError {
             return "ERROR: \(error)"

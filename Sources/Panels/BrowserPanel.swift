@@ -2455,9 +2455,7 @@ final class BrowserPanel: Panel, ObservableObject {
 
         let webView = CmuxWebView(frame: .zero, configuration: config)
         webView.allowsBackForwardNavigationGestures = true
-        if #available(macOS 13.3, *) {
-            webView.isInspectable = true
-        }
+        webView.isInspectable = true
         // Match the empty-page background to the terminal theme so newly-created browsers
         // don't flash white before content loads.
         webView.underPageBackgroundColor = GhosttyBackgroundTheme.currentColor()
@@ -2703,8 +2701,6 @@ final class BrowserPanel: Panel, ObservableObject {
     }
 
     private func applyRemoteProxyConfigurationIfAvailable() {
-        guard #available(macOS 14.0, *) else { return }
-
         let store = webView.configuration.websiteDataStore
         guard let endpoint = remoteProxyEndpoint else {
             store.proxyConfigurations = []

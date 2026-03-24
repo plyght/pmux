@@ -58,7 +58,35 @@ else
         echo "==> Building GhosttyKit.xcframework (this may take a few minutes)..."
         (
             cd ghostty
-            zig build -Demit-xcframework=true -Dxcframework-target=universal -Doptimize=ReleaseFast
+
+            XCODE_DEV_DIR=""
+            if xcode-select -p &>/dev/null; then
+                XCODE_DEV_DIR="$(xcode-select -p)"
+            fi
+
+            CLT_SDK="/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+            XCODE_SDK=""
+            if [ -n "$XCODE_DEV_DIR" ]; then
+                XCODE_SDK="$XCODE_DEV_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+            fi
+
+            USE_CLT_WORKAROUND=false
+            if [ -d "$CLT_SDK" ] && [ -n "$XCODE_SDK" ] && [ -d "$XCODE_SDK" ]; then
+                CLT_TARGETS=$(head -3 "$CLT_SDK/usr/lib/libSystem.tbd" 2>/dev/null | grep "targets:" || true)
+                XCODE_TARGETS=$(head -3 "$XCODE_SDK/usr/lib/libSystem.tbd" 2>/dev/null | grep "targets:" || true)
+                if echo "$CLT_TARGETS" | grep -q "arm64-macos" && ! echo "$XCODE_TARGETS" | grep -q "arm64-macos"; then
+                    USE_CLT_WORKAROUND=true
+                fi
+            fi
+
+            if [ "$USE_CLT_WORKAROUND" = true ]; then
+                echo "    (Using CLT SDK for zig compatibility with macOS 26)"
+                DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+                    CMUX_XCODE_DEV_DIR="$XCODE_DEV_DIR" \
+                    zig build -Demit-xcframework=true -Dxcframework-target=native -Doptimize=ReleaseFast
+            else
+                zig build -Demit-xcframework=true -Dxcframework-target=universal -Doptimize=ReleaseFast
+            fi
         )
         # Stamp the build output with the SHA it was built from
         echo "$GHOSTTY_SHA" > "$LOCAL_SHA_STAMP"
