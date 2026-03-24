@@ -11,6 +11,7 @@ DERIVED_SET=0
 TAG=""
 CMUX_DEBUG_LOG=""
 CLI_PATH=""
+QUIET=0
 LAST_SOCKET_PATH_DIR="$HOME/Library/Application Support/cmux"
 LAST_SOCKET_PATH_FILE="${LAST_SOCKET_PATH_DIR}/last-socket-path"
 
@@ -109,6 +110,7 @@ Options:
   --name <app name>      Override app display/bundle name.
   --bundle-id <id>       Override bundle identifier.
   --derived-data <path>  Override derived data path.
+  -q, --quiet            Only show errors and build result (suppress xcodebuild noise).
   -h, --help             Show this help.
 EOF
 }
@@ -233,6 +235,10 @@ while [[ $# -gt 0 ]]; do
       DERIVED_SET=1
       shift 2
       ;;
+    -q|--quiet)
+      QUIET=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -285,11 +291,22 @@ XCODEBUILD_ARGS+=(build)
 
 XCODE_LOG="/tmp/cmux-xcodebuild-${TAG_SLUG}.log"
 set +e
-xcodebuild "${XCODEBUILD_ARGS[@]}" 2>&1 | tee "$XCODE_LOG" | grep -E '(warning:|error:|fatal:|BUILD FAILED|BUILD SUCCEEDED|\*\* BUILD)'
-XCODE_PIPESTATUS=("${PIPESTATUS[@]}")
+if [[ "$QUIET" -eq 1 ]]; then
+  xcodebuild "${XCODEBUILD_ARGS[@]}" > "$XCODE_LOG" 2>&1
+  XCODE_EXIT=$?
+  if [[ "$XCODE_EXIT" -ne 0 ]]; then
+    echo "BUILD FAILED (see $XCODE_LOG)"
+    grep -E '(error:|fatal:)' "$XCODE_LOG" | head -20
+  else
+    echo "BUILD SUCCEEDED"
+  fi
+else
+  xcodebuild "${XCODEBUILD_ARGS[@]}" 2>&1 | tee "$XCODE_LOG" | grep -E '(warning:|error:|fatal:|BUILD FAILED|BUILD SUCCEEDED|\*\* BUILD)'
+  XCODE_PIPESTATUS=("${PIPESTATUS[@]}")
+  XCODE_EXIT="${XCODE_PIPESTATUS[0]}"
+  echo "Full build log: $XCODE_LOG"
+fi
 set -e
-XCODE_EXIT="${XCODE_PIPESTATUS[0]}"
-echo "Full build log: $XCODE_LOG"
 if [[ "$XCODE_EXIT" -ne 0 ]]; then
   echo "error: xcodebuild failed with exit code $XCODE_EXIT" >&2
   exit "$XCODE_EXIT"
@@ -421,11 +438,33 @@ fi
 sleep 0.3
 CMUXD_SRC="$PWD/cmuxd/zig-out/bin/cmuxd"
 GHOSTTY_HELPER_SRC="$PWD/ghostty/zig-out/bin/ghostty"
+
+detect_zig_sdk_env() {
+  local clt_sdk="/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+  local xcode_dev_dir=""
+  if xcode-select -p &>/dev/null; then
+    xcode_dev_dir="$(xcode-select -p)"
+  fi
+  local xcode_sdk=""
+  if [[ -n "$xcode_dev_dir" ]]; then
+    xcode_sdk="$xcode_dev_dir/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+  fi
+  if [[ -d "$clt_sdk" && -n "$xcode_sdk" && -d "$xcode_sdk" ]]; then
+    local clt_targets xcode_targets
+    clt_targets=$(head -3 "$clt_sdk/usr/lib/libSystem.tbd" 2>/dev/null | grep "targets:" || true)
+    xcode_targets=$(head -3 "$xcode_sdk/usr/lib/libSystem.tbd" 2>/dev/null | grep "targets:" || true)
+    if echo "$clt_targets" | grep -q "arm64-macos" && ! echo "$xcode_targets" | grep -q "arm64-macos"; then
+      export DEVELOPER_DIR=/Library/Developer/CommandLineTools
+      export CMUX_XCODE_DEV_DIR="$xcode_dev_dir"
+    fi
+  fi
+}
+
 if [[ -d "$PWD/cmuxd" ]]; then
-  (cd "$PWD/cmuxd" && zig build -Doptimize=ReleaseFast)
+  (cd "$PWD/cmuxd" && detect_zig_sdk_env && zig build -Doptimize=ReleaseFast)
 fi
 if [[ -d "$PWD/ghostty" ]]; then
-  (cd "$PWD/ghostty" && zig build cli-helper -Dapp-runtime=none -Demit-macos-app=false -Demit-xcframework=false -Doptimize=ReleaseFast)
+  (cd "$PWD/ghostty" && detect_zig_sdk_env && zig build cli-helper -Dapp-runtime=none -Demit-macos-app=false -Demit-xcframework=false -Doptimize=ReleaseFast)
 fi
 if [[ -x "$CMUXD_SRC" ]]; then
   BIN_DIR="$APP_PATH/Contents/Resources/bin"
@@ -500,7 +539,7 @@ if [[ "${#PIDS[@]}" -gt 1 ]]; then
   done
 fi
 
-if [[ -n "${TAG_SLUG:-}" ]]; then
+if [[ -n "${TAG_SLUG:-}" && "$QUIET" -eq 0 ]]; then
   print_tag_cleanup_reminder "$TAG_SLUG"
 fi
 

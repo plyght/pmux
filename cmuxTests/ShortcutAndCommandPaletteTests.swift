@@ -700,7 +700,7 @@ final class ShortcutHintDebugSettingsTests: XCTestCase {
 
 
 final class DevBuildBannerDebugSettingsTests: XCTestCase {
-    func testShowSidebarBannerDefaultsToVisible() {
+    func testShowSidebarBannerDefaultsToHidden() {
         let suiteName = "DevBuildBannerDebugSettingsTests.Default.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
             XCTFail("Failed to create isolated UserDefaults suite")
@@ -709,7 +709,7 @@ final class DevBuildBannerDebugSettingsTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         defaults.removeObject(forKey: DevBuildBannerDebugSettings.sidebarBannerVisibleKey)
-        XCTAssertTrue(DevBuildBannerDebugSettings.showSidebarBanner(defaults: defaults))
+        XCTAssertFalse(DevBuildBannerDebugSettings.showSidebarBanner(defaults: defaults))
     }
 
     func testShowSidebarBannerRespectsStoredValue() {

@@ -374,30 +374,8 @@ struct SocketControlSettings {
         bundleIdentifier: String? = Bundle.main.bundleIdentifier,
         isDebugBuild: Bool = SocketControlSettings.isDebugBuild
     ) -> Bool {
-        guard isDebugBuild else { return false }
-        if isRunningUnderXCTest(environment: environment) {
-            return false
-        }
-        // XCUITest launches the app as a separate process without XCTest env vars,
-        // so isRunningUnderXCTest() misses it. Check for any CMUX_UI_TEST_ env var.
-        if environment.keys.contains(where: { $0.hasPrefix("CMUX_UI_TEST_") }) {
-            return false
-        }
-
-        guard let bundleIdentifier = bundleIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !bundleIdentifier.isEmpty else {
-            return false
-        }
-
-        if bundleIdentifier.hasPrefix("\(baseDebugBundleIdentifier).") {
-            return false
-        }
-
-        guard bundleIdentifier == baseDebugBundleIdentifier else {
-            return false
-        }
-
-        return launchTag(environment: environment) == nil
+        _ = (environment, bundleIdentifier, isDebugBuild)
+        return false
     }
 
     static func isRunningUnderXCTest(environment: [String: String]) -> Bool {
