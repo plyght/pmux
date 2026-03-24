@@ -157,7 +157,9 @@ struct ShortcutHintPillBackground: View {
 enum WindowGlassEffect {
     private static var glassViewKey: UInt8 = 0
 
-    static var isAvailable: Bool { true }
+    static var isAvailable: Bool {
+        NSClassFromString("NSGlassEffectView") != nil
+    }
 
     static func apply(to window: NSWindow, tintColor: NSColor? = nil) {
         guard let originalContentView = window.contentView else { return }

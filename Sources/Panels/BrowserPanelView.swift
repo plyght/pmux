@@ -4090,46 +4090,6 @@ private struct OmnibarSuggestionsView: View {
         }
     }
 
-    private var popupOverlayGradientColors: [Color] {
-        switch colorScheme {
-        case .light:
-            return [
-                Color.white.opacity(0.55),
-                Color.white.opacity(0.2),
-            ]
-        case .dark:
-            return [
-                Color.black.opacity(0.26),
-                Color.black.opacity(0.14),
-            ]
-        @unknown default:
-            return [
-                Color.white.opacity(0.55),
-                Color.white.opacity(0.2),
-            ]
-        }
-    }
-
-    private var popupBorderGradientColors: [Color] {
-        switch colorScheme {
-        case .light:
-            return [
-                Color.white.opacity(0.65),
-                Color.black.opacity(0.12),
-            ]
-        case .dark:
-            return [
-                Color.white.opacity(0.22),
-                Color.white.opacity(0.06),
-            ]
-        @unknown default:
-            return [
-                Color.white.opacity(0.65),
-                Color.black.opacity(0.12),
-            ]
-        }
-    }
-
     private var popupShadowColor: Color {
         switch colorScheme {
         case .light:

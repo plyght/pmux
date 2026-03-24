@@ -83,7 +83,7 @@ else
                 echo "    (Using CLT SDK for zig compatibility with macOS 26)"
                 DEVELOPER_DIR=/Library/Developer/CommandLineTools \
                     CMUX_XCODE_DEV_DIR="$XCODE_DEV_DIR" \
-                    zig build -Demit-xcframework=true -Dxcframework-target=native -Doptimize=ReleaseFast
+                    zig build -Demit-xcframework=true -Dxcframework-target=universal -Doptimize=ReleaseFast
             else
                 zig build -Demit-xcframework=true -Dxcframework-target=universal -Doptimize=ReleaseFast
             fi

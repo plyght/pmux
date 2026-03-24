@@ -114,7 +114,8 @@ struct SurfaceSearchOverlay: View {
             }
             .padding(8)
             .background(.clear)
-            .glassEffect(.regular, in: .rect(cornerRadius: 10, style: .continuous))
+            .glassEffect(.regular, in: clipShape)
+            .clipShape(clipShape)
             .shadow(radius: 4)
             .onAppear {
                 #if DEBUG
@@ -154,7 +155,7 @@ struct SurfaceSearchOverlay: View {
     }
 
     private var clipShape: some Shape {
-        RoundedRectangle(cornerRadius: 8)
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
     }
 
     enum Corner {

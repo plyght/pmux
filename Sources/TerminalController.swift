@@ -12774,50 +12774,63 @@ class TerminalController {
         let outputPath = outputDir.appendingPathComponent(filename)
 
         let semaphore = DispatchSemaphore(value: 0)
+        let resultQueue = DispatchQueue(label: "cmux.captureScreenshot")
         var captureError: String?
 
-        var targetWindow: NSWindow?
+        var captureParams: (windowID: CGWindowID, width: Int, height: Int)?
         DispatchQueue.main.sync {
-            targetWindow = NSApp.mainWindow ?? NSApp.windows.first
+            guard let window = NSApp.mainWindow ?? NSApp.windows.first else { return }
+            let scale = window.backingScaleFactor
+            let frame = window.frame
+            captureParams = (
+                CGWindowID(window.windowNumber),
+                Int((frame.width * scale).rounded()),
+                Int((frame.height * scale).rounded())
+            )
         }
 
-        guard let window = targetWindow else {
+        guard let params = captureParams else {
             return "ERROR: No window available"
         }
 
-        let windowNumber = CGWindowID(window.windowNumber)
-
         Task {
+            var err: String?
+            defer {
+                resultQueue.async {
+                    captureError = err
+                    semaphore.signal()
+                }
+            }
             do {
                 let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-                guard let scWindow = content.windows.first(where: { $0.windowID == windowNumber }) else {
-                    captureError = "Failed to find window in ScreenCaptureKit"
-                    semaphore.signal()
+                guard let scWindow = content.windows.first(where: { $0.windowID == params.windowID }) else {
+                    err = "Failed to find window in ScreenCaptureKit"
                     return
                 }
 
                 let filter = SCContentFilter(desktopIndependentWindow: scWindow)
                 let config = SCStreamConfiguration()
-                config.width = Int(window.frame.width) * Int(window.backingScaleFactor)
-                config.height = Int(window.frame.height) * Int(window.backingScaleFactor)
+                config.width = params.width
+                config.height = params.height
 
                 let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
                 let bitmap = NSBitmapImageRep(cgImage: image)
                 guard let pngData = bitmap.representation(using: .png, properties: [:]) else {
-                    captureError = "Failed to create PNG data"
-                    semaphore.signal()
+                    err = "Failed to create PNG data"
                     return
                 }
                 try pngData.write(to: outputPath)
             } catch {
-                captureError = "Failed to capture: \(error.localizedDescription)"
+                err = "Failed to capture: \(error.localizedDescription)"
             }
-            semaphore.signal()
         }
 
-        semaphore.wait()
+        let timeoutSeconds: TimeInterval = 10
+        if semaphore.wait(timeout: .now() + timeoutSeconds) == .timedOut {
+            return "ERROR: Screenshot capture timed out after \(Int(timeoutSeconds)) seconds"
+        }
 
-        if let error = captureError {
+        if let error = resultQueue.sync(execute: { captureError }) {
             return "ERROR: \(error)"
         }
 
