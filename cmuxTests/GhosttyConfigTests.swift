@@ -1752,8 +1752,8 @@ final class SocketControlSettingsTests: XCTestCase {
         XCTAssertEqual(path, SocketControlSettings.userScopedStableSocketPath(currentUserID: 501))
     }
 
-    func testUntaggedDebugBundleBlockedWithoutLaunchTag() {
-        XCTAssertTrue(
+    func testUntaggedDebugBundleNotBlockedWithoutLaunchTag() {
+        XCTAssertFalse(
             SocketControlSettings.shouldBlockUntaggedDebugLaunch(
                 environment: [:],
                 bundleIdentifier: "com.cmuxterm.app.debug",

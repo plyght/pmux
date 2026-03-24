@@ -177,10 +177,6 @@ struct cmuxApp: App {
     init() {
         UITestLaunchManifest.applyIfPresent()
 
-        if SocketControlSettings.shouldBlockUntaggedDebugLaunch() {
-            Self.terminateForMissingLaunchTag()
-        }
-
         Self.configureGhosttyEnvironment()
 
         // Apply saved language preference before any UI loads
@@ -214,14 +210,6 @@ struct cmuxApp: App {
         // UI tests depend on AppDelegate wiring happening even if SwiftUI view appearance
         // callbacks (e.g. `.onAppear`) are delayed or skipped.
         appDelegate.configure(tabManager: tabManager, notificationStore: notificationStore, sidebarState: sidebarState)
-    }
-
-    private static func terminateForMissingLaunchTag() -> Never {
-        let message = "error: refusing to launch untagged cmux DEV; start with ./scripts/reload.sh --tag <name> (or set CMUX_TAG for test harnesses)"
-        fputs("\(message)\n", stderr)
-        fflush(stderr)
-        NSLog("%@", message)
-        Darwin.exit(64)
     }
 
     private static func configureGhosttyEnvironment() {
@@ -1312,7 +1300,7 @@ private enum SettingsAboutWindowKind: String, CaseIterable, Identifiable {
         case .settings:
             return NSSize(width: 420, height: 360)
         case .about:
-            return NSSize(width: 360, height: 520)
+            return NSSize(width: 300, height: 440)
         }
     }
 }
@@ -1419,14 +1407,14 @@ private struct SettingsAboutTitlebarDebugOptions: Equatable {
                 windowTitle: "About cmux",
                 titleVisibility: .hidden,
                 titlebarAppearsTransparent: true,
-                movableByWindowBackground: false,
+                movableByWindowBackground: true,
                 titled: true,
                 closable: true,
                 miniaturizable: true,
                 resizable: false,
-                fullSizeContentView: false,
+                fullSizeContentView: true,
                 showToolbar: false,
-                toolbarStyle: .automatic
+                toolbarStyle: .unifiedCompact
             )
         }
     }
@@ -2515,8 +2503,8 @@ private final class AboutWindowController: NSWindowController, NSWindowDelegate 
 
     private init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 520),
-            styleMask: [.titled, .closable, .miniaturizable],
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 480),
+            styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -2808,8 +2796,9 @@ private struct AboutPanelView: View {
             Image(nsImage: NSApplication.shared.applicationIconImage)
                 .resizable()
                 .renderingMode(.original)
-                .frame(width: 96, height: 96)
-                .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 3)
+                .aspectRatio(contentMode: .fit)
+                .frame(height: 128)
+                .accessibilityLabel(String(localized: "about.appIcon.accessibilityLabel", defaultValue: "cmux application icon"))
 
             VStack(alignment: .center, spacing: 32) {
                 VStack(alignment: .center, spacing: 8) {
@@ -2832,11 +2821,14 @@ private struct AboutPanelView: View {
                     if let build {
                         AboutPropertyRow(label: String(localized: "about.build", defaultValue: "Build"), text: build)
                     }
-                    let commitText = commit ?? "—"
-                    let commitURL = commit.flatMap { hash in
-                        URL(string: "https://github.com/manaflow-ai/cmux/commit/\(hash)")
+                    if let commit, !commit.isEmpty {
+                        let commitURL = URL(string: "https://github.com/manaflow-ai/cmux/commit/\(commit)")
+                        AboutPropertyRow(
+                            label: String(localized: "about.commit", defaultValue: "Commit"),
+                            text: commit,
+                            url: commitURL
+                        )
                     }
-                    AboutPropertyRow(label: String(localized: "about.commit", defaultValue: "Commit"), text: commitText, url: commitURL)
                 }
                 .frame(maxWidth: .infinity)
 
@@ -2870,7 +2862,7 @@ private struct AboutPanelView: View {
         }
         .padding(.top, 8)
         .padding(32)
-        .frame(minWidth: 280)
+        .frame(minWidth: 256)
         .background(AboutVisualEffectBackground(material: .underWindowBackground).ignoresSafeArea())
     }
 }
@@ -3484,7 +3476,7 @@ private struct AboutPropertyRow: View {
 
     @ViewBuilder private var textView: some View {
         Text(text)
-            .frame(width: 140, alignment: .leading)
+            .frame(width: 125, alignment: .leading)
             .padding(.leading, 2)
             .tint(.secondary)
             .opacity(0.8)

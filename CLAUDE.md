@@ -1,16 +1,55 @@
 # cmux agent notes
 
-## Initial setup
+## How to build (agents)
 
-Run the setup script to initialize submodules and build GhosttyKit:
+**First time in a clone** — submodules plus `GhosttyKit.xcframework` (Zig + Xcode tools; can take several minutes):
 
 ```bash
 ./scripts/setup.sh
 ```
 
+Equivalent: `make setup` (see `make help` for all Makefile targets).
+
+**Already set up** — if you have built before (submodules present, `GhosttyKit.xcframework` symlink at repo root, Xcode opens the project), you do **not** need to run `setup.sh` again for normal edits. Go straight to **Day-to-day** below. Run `./scripts/setup.sh` again only when something changed that needs it, for example: fresh clone, `ghostty` submodule updated to a new commit, missing or broken `GhosttyKit.xcframework`, or CI/docs tell you to refresh the kit.
+
+**Day-to-day — build and launch the Debug app** — you must use a **tag** so bundle ID, debug socket, and DerivedData do not collide with other cmux instances or agents:
+
+```bash
+./scripts/reload.sh --tag <short-slug>
+```
+
+Prefer quiet output (errors + `BUILD SUCCEEDED` / `BUILD FAILED`; full log still at `/tmp/cmux-xcodebuild-<slug>.log`):
+
+```bash
+./scripts/reload.sh --tag <short-slug> --quiet
+```
+
+Or from the repo root:
+
+```bash
+make dev                    # same as reload with TAG=dev (default)
+make dev TAG=fix-sidebar    # same as --tag fix-sidebar
+```
+
+`reload.sh` also builds `cmuxd` and the Ghostty CLI helper (Zig) after Xcode succeeds, then copies them into the app bundle and opens it. Do not `open` an untagged `cmux DEV.app` from DerivedData.
+
+**Compile only (no launch)** — still use an isolated DerivedData path:
+
+```bash
+xcodebuild -project GhosttyTabs.xcodeproj -scheme cmux -configuration Debug -destination 'platform=macOS' -derivedDataPath /tmp/cmux-<your-tag> build
+```
+
+**Release / staging** — `./scripts/reloadp.sh` (Release), `./scripts/reloads.sh` (isolated staging app). Same idea as `make release` / `make staging`.
+
+**Clean a tag’s DerivedData / sockets** (after you are done with that dev build): `make clean TAG=<slug>` or `make clean-all`.
+
+## Initial setup
+
+Same as **How to build (agents)** → first-time `setup` above (`./scripts/setup.sh` or `make setup`).
+
 ## Local dev
 
-After making code changes, always run the reload script with a tag to launch the Debug app:
+After making code changes, always run the reload script with a tag to launch the Debug app (see **How to build (agents)** for `make dev` and `--quiet`):
 
 ```bash
 ./scripts/reload.sh --tag fix-zsh-autosuggestions

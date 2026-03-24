@@ -8636,7 +8636,7 @@ enum ShortcutHintDebugSettings {
 
 enum DevBuildBannerDebugSettings {
     static let sidebarBannerVisibleKey = "showSidebarDevBuildBanner"
-    static let defaultShowSidebarBanner = true
+    static let defaultShowSidebarBanner = false
 
     static func showSidebarBanner(defaults: UserDefaults = .standard) -> Bool {
         guard defaults.object(forKey: sidebarBannerVisibleKey) != nil else {
