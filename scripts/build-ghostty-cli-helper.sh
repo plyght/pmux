@@ -90,6 +90,28 @@ if [[ ! -f "$GHOSTTY_DIR/build.zig" ]]; then
   exit 1
 fi
 
+detect_zig_sdk_env() {
+  local clt_sdk="/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+  local xcode_dev_dir=""
+  if xcode-select -p &>/dev/null; then
+    xcode_dev_dir="$(xcode-select -p)"
+  fi
+  local xcode_sdk=""
+  if [[ -n "$xcode_dev_dir" ]]; then
+    xcode_sdk="$xcode_dev_dir/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+  fi
+
+  if [[ -d "$clt_sdk" && -n "$xcode_sdk" && -d "$xcode_sdk" ]]; then
+    local clt_targets xcode_targets
+    clt_targets=$(head -3 "$clt_sdk/usr/lib/libSystem.tbd" 2>/dev/null | grep "targets:" || true)
+    xcode_targets=$(head -3 "$xcode_sdk/usr/lib/libSystem.tbd" 2>/dev/null | grep "targets:" || true)
+    if echo "$clt_targets" | grep -q "arm64-macos" && ! echo "$xcode_targets" | grep -q "arm64-macos"; then
+      export DEVELOPER_DIR=/Library/Developer/CommandLineTools
+      export CMUX_XCODE_DEV_DIR="$xcode_dev_dir"
+    fi
+  fi
+}
+
 build_helper() {
   local prefix="$1"
   local target="${2:-}"
@@ -110,6 +132,7 @@ build_helper() {
 
   (
     cd "$GHOSTTY_DIR"
+    detect_zig_sdk_env
     "${args[@]}"
   )
 }

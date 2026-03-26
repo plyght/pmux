@@ -9698,12 +9698,10 @@ extension GhosttyNSView: NSTextInputClient {
         Int(window?.level.rawValue ?? NSWindow.Level.normal.rawValue)
     }
 
-    @available(macOS 14.0, *)
     var unionRectInVisibleSelectedRange: NSRect {
         firstRect(forCharacterRange: selectedRange(), actualRange: nil)
     }
 
-    @available(macOS 14.0, *)
     var documentVisibleRect: NSRect {
         visibleDocumentRectInScreenCoordinates()
     }

@@ -178,10 +178,6 @@ struct cmuxApp: App {
     init() {
         UITestLaunchManifest.applyIfPresent()
 
-        if SocketControlSettings.shouldBlockUntaggedDebugLaunch() {
-            Self.terminateForMissingLaunchTag()
-        }
-
         Self.configureGhosttyEnvironment()
 
         // Apply saved language preference before any UI loads
@@ -215,14 +211,6 @@ struct cmuxApp: App {
         // UI tests depend on AppDelegate wiring happening even if SwiftUI view appearance
         // callbacks (e.g. `.onAppear`) are delayed or skipped.
         appDelegate.configure(tabManager: tabManager, notificationStore: notificationStore, sidebarState: sidebarState)
-    }
-
-    private static func terminateForMissingLaunchTag() -> Never {
-        let message = "error: refusing to launch untagged cmux DEV; start with ./scripts/reload.sh --tag <name> (or set CMUX_TAG for test harnesses)"
-        fputs("\(message)\n", stderr)
-        fflush(stderr)
-        NSLog("%@", message)
-        Darwin.exit(64)
     }
 
     private static func configureGhosttyEnvironment() {
@@ -317,7 +305,7 @@ struct cmuxApp: App {
             approximatelyEqual(cornerRadius, 0.0)
 
         if usesLegacyDefaults {
-            let preset = SidebarPresetOption.nativeSidebar
+            let preset = SidebarPresetOption.liquidGlass
             defaults.set(preset.rawValue, forKey: "sidebarPreset")
             defaults.set(preset.material.rawValue, forKey: "sidebarMaterial")
             defaults.set(preset.blendMode.rawValue, forKey: "sidebarBlendMode")
@@ -1299,7 +1287,7 @@ private enum SettingsAboutWindowKind: String, CaseIterable, Identifiable {
         case .settings:
             return NSSize(width: 420, height: 360)
         case .about:
-            return NSSize(width: 360, height: 520)
+            return NSSize(width: 300, height: 440)
         }
     }
 }
@@ -1406,14 +1394,14 @@ private struct SettingsAboutTitlebarDebugOptions: Equatable {
                 windowTitle: "About cmux",
                 titleVisibility: .hidden,
                 titlebarAppearsTransparent: true,
-                movableByWindowBackground: false,
+                movableByWindowBackground: true,
                 titled: true,
                 closable: true,
                 miniaturizable: true,
                 resizable: false,
-                fullSizeContentView: false,
+                fullSizeContentView: true,
                 showToolbar: false,
-                toolbarStyle: .automatic
+                toolbarStyle: .unifiedCompact
             )
         }
     }
@@ -1720,10 +1708,10 @@ private enum DebugWindowConfigSnapshot {
 
     static func combinedPayload(defaults: UserDefaults = .standard) -> String {
         let sidebarPayload = """
-        sidebarPreset=\(stringValue(defaults, key: "sidebarPreset", fallback: SidebarPresetOption.nativeSidebar.rawValue))
-        sidebarMaterial=\(stringValue(defaults, key: "sidebarMaterial", fallback: SidebarMaterialOption.sidebar.rawValue))
-        sidebarBlendMode=\(stringValue(defaults, key: "sidebarBlendMode", fallback: SidebarBlendModeOption.withinWindow.rawValue))
-        sidebarState=\(stringValue(defaults, key: "sidebarState", fallback: SidebarStateOption.followWindow.rawValue))
+        sidebarPreset=\(stringValue(defaults, key: "sidebarPreset", fallback: SidebarPresetOption.liquidGlass.rawValue))
+        sidebarMaterial=\(stringValue(defaults, key: "sidebarMaterial", fallback: SidebarMaterialOption.liquidGlass.rawValue))
+        sidebarBlendMode=\(stringValue(defaults, key: "sidebarBlendMode", fallback: SidebarBlendModeOption.behindWindow.rawValue))
+        sidebarState=\(stringValue(defaults, key: "sidebarState", fallback: SidebarStateOption.active.rawValue))
         sidebarBlurOpacity=\(String(format: "%.2f", doubleValue(defaults, key: "sidebarBlurOpacity", fallback: 1.0)))
         sidebarTintHex=\(stringValue(defaults, key: "sidebarTintHex", fallback: "#000000"))
         sidebarTintHexLight=\(stringValue(defaults, key: "sidebarTintHexLight", fallback: "(nil)"))
@@ -2502,8 +2490,8 @@ private final class AboutWindowController: NSWindowController, NSWindowDelegate 
 
     private init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 520),
-            styleMask: [.titled, .closable, .miniaturizable],
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 480),
+            styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -2795,8 +2783,9 @@ private struct AboutPanelView: View {
             Image(nsImage: NSApplication.shared.applicationIconImage)
                 .resizable()
                 .renderingMode(.original)
-                .frame(width: 96, height: 96)
-                .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 3)
+                .aspectRatio(contentMode: .fit)
+                .frame(height: 128)
+                .accessibilityLabel(String(localized: "about.appIcon.accessibilityLabel", defaultValue: "cmux application icon"))
 
             VStack(alignment: .center, spacing: 32) {
                 VStack(alignment: .center, spacing: 8) {
@@ -2819,11 +2808,14 @@ private struct AboutPanelView: View {
                     if let build {
                         AboutPropertyRow(label: String(localized: "about.build", defaultValue: "Build"), text: build)
                     }
-                    let commitText = commit ?? "—"
-                    let commitURL = commit.flatMap { hash in
-                        URL(string: "https://github.com/manaflow-ai/cmux/commit/\(hash)")
+                    if let commit, !commit.isEmpty {
+                        let commitURL = URL(string: "https://github.com/manaflow-ai/cmux/commit/\(commit)")
+                        AboutPropertyRow(
+                            label: String(localized: "about.commit", defaultValue: "Commit"),
+                            text: commit,
+                            url: commitURL
+                        )
                     }
-                    AboutPropertyRow(label: String(localized: "about.commit", defaultValue: "Commit"), text: commitText, url: commitURL)
                 }
                 .frame(maxWidth: .infinity)
 
@@ -2857,20 +2849,20 @@ private struct AboutPanelView: View {
         }
         .padding(.top, 8)
         .padding(32)
-        .frame(minWidth: 280)
+        .frame(minWidth: 256)
         .background(AboutVisualEffectBackground(material: .underWindowBackground).ignoresSafeArea())
     }
 }
 
 private struct SidebarDebugView: View {
-    @AppStorage("sidebarPreset") private var sidebarPreset = SidebarPresetOption.nativeSidebar.rawValue
+    @AppStorage("sidebarPreset") private var sidebarPreset = SidebarPresetOption.liquidGlass.rawValue
     @AppStorage("sidebarTintOpacity") private var sidebarTintOpacity = SidebarTintDefaults.opacity
     @AppStorage("sidebarTintHex") private var sidebarTintHex = SidebarTintDefaults.hex
     @AppStorage("sidebarTintHexLight") private var sidebarTintHexLight: String?
     @AppStorage("sidebarTintHexDark") private var sidebarTintHexDark: String?
-    @AppStorage("sidebarMaterial") private var sidebarMaterial = SidebarMaterialOption.sidebar.rawValue
-    @AppStorage("sidebarBlendMode") private var sidebarBlendMode = SidebarBlendModeOption.withinWindow.rawValue
-    @AppStorage("sidebarState") private var sidebarState = SidebarStateOption.followWindow.rawValue
+    @AppStorage("sidebarMaterial") private var sidebarMaterial = SidebarMaterialOption.liquidGlass.rawValue
+    @AppStorage("sidebarBlendMode") private var sidebarBlendMode = SidebarBlendModeOption.behindWindow.rawValue
+    @AppStorage("sidebarState") private var sidebarState = SidebarStateOption.active.rawValue
     @AppStorage("sidebarCornerRadius") private var sidebarCornerRadius = 0.0
     @AppStorage("sidebarBlurOpacity") private var sidebarBlurOpacity = 1.0
     @AppStorage(SidebarBranchLayoutSettings.key) private var sidebarBranchVerticalLayout = SidebarBranchLayoutSettings.defaultVerticalLayout
@@ -3471,7 +3463,7 @@ private struct AboutPropertyRow: View {
 
     @ViewBuilder private var textView: some View {
         Text(text)
-            .frame(width: 140, alignment: .leading)
+            .frame(width: 125, alignment: .leading)
             .padding(.leading, 2)
             .tint(.secondary)
             .opacity(0.8)

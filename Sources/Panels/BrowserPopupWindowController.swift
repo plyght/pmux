@@ -106,9 +106,7 @@ final class BrowserPopupWindowController: NSObject, NSWindowDelegate {
         // shared cookie/storage scope and opener linkage.
         let webView = CmuxWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
-        if #available(macOS 13.3, *) {
-            webView.isInspectable = true
-        }
+        webView.isInspectable = true
         webView.underPageBackgroundColor = GhosttyBackgroundTheme.currentColor()
         webView.customUserAgent = BrowserUserAgentSettings.safariUserAgent
         self.webView = webView
